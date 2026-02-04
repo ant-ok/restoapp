@@ -1,35 +1,36 @@
 {% extends "base.html" %}
 
-{% block title %}restoapp{% endblock %}
+{% block title %}Вход — restoapp{% endblock %}
 {% block header_title %}restoapp{% endblock %}
 
 {% block content %}
-  <div class="card">
-    <h2 style="margin-top:0;">Добро пожаловать в restoapp</h2>
-    <p class="muted">Подключите кассу Poster, загрузите данные и получите понятные отчеты по выручке, чекам и проблемам.</p>
-  </div>
+  <div class="card" style="max-width:520px;">
+    <h2 style="margin-top:0;">Вход</h2>
+    <p class="muted">Войдите в аккаунт или зарегистрируйтесь, чтобы подключить кассу.</p>
 
-  <div class="grid-2">
-    <div class="card">
-      <strong>Онбординг в 3 шага</strong>
-      <ol>
-        <li>Зарегистрируйтесь или войдите</li>
-        <li>Подключите кассу (URL + API ключ)</li>
-        <li>Откройте отчеты и загрузите период</li>
-      </ol>
-      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
-        <a class="btn" href="/onboarding/">Подключить кассу</a>
-        <a class="btn secondary" href="/reports/">Открыть отчеты</a>
+    <form method="post" action="/accounts/login/" style="display:grid;gap:12px;">
+      {% csrf_token %}
+      <div>
+        <label>Логин или email</label>
+        <input type="text" name="username" required />
       </div>
+      <div>
+        <label>Пароль</label>
+        <input type="password" name="password" required />
+      </div>
+      <button class="btn" type="submit">Войти</button>
+    </form>
+
+    <div style="margin:14px 0;display:flex;gap:10px;align-items:center;">
+      <div style="flex:1;height:1px;background:#e2e8f0;"></div>
+      <span class="muted">или</span>
+      <div style="flex:1;height:1px;background:#e2e8f0;"></div>
     </div>
-    <div class="card">
-      <strong>Возможности</strong>
-      <ul>
-        <li>Отчеты по точкам и метрикам</li>
-        <li>Конструктор отчета как Excel</li>
-        <li>Сомнительные операции и уведомления</li>
-        <li>Telegram‑бот с автосводкой</li>
-      </ul>
-    </div>
+
+    <a class="btn secondary" href="/accounts/google/login/?process=login" style="display:inline-block;">Войти через Google</a>
+
+    <p class="muted" style="margin-top:14px;">
+      Нет аккаунта? <a href="/register/" style="font-weight:600;">Зарегистрироваться</a>
+    </p>
   </div>
 {% endblock %}

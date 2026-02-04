@@ -25,6 +25,7 @@ urlpatterns = [
     path("onboarding/", reports_views.onboarding),
     path('admin/', admin.site.urls),
     path("accounts/", include("django.contrib.auth.urls")),
+    path("accounts/", include("allauth.urls")),
     path("poster/auth/start/", reports_views.poster_auth_start),
     path("poster/auth/callback/", reports_views.poster_auth_callback),
     path("reports/", reports_views.reports_dashboard),
