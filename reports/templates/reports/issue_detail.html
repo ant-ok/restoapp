@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Проблема — restoapp{% endblock %}
+{% block header_title %}Проблема{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <p><strong>Дата:</strong> {{ issue.date }}</p>
+    <p><strong>Тип:</strong> {{ issue.issue_type }}</p>
+    <p><strong>Сообщение:</strong> {{ issue.message }}</p>
+    <p><strong>Серьезность:</strong> {{ issue.severity }}</p>
+  </div>
+
+  {% if explain %}
+    <div class="card">
+      <h2 style="margin-top:0;">{{ explain.title }}</h2>
+      <p>{{ explain.details }}</p>
+      <p><strong>Совет:</strong> {{ explain.tip }}</p>
+    </div>
+  {% endif %}
+
+  <div class="card">
+    <h2 style="margin-top:0;">Контекст</h2>
+    <pre style="background:#f7f7f7;padding:12px;border-radius:8px;overflow:auto;">{{ issue.context|safe }}</pre>
+  </div>
+
+  {% if transaction %}
+    <div class="card">
+      <h2 style="margin-top:0;">Чек</h2>
+      <p><a href="/reports/transactions/{{ transaction.transaction_id }}/">Открыть чек {{ transaction.transaction_id }}</a></p>
+    </div>
+  {% endif %}
+
+  <div class="card">
+    <form method="post">
+      {% csrf_token %}
+      {% if issue.ignored %}
+        <input type="hidden" name="action" value="restore" />
+        <button class="btn" type="submit">Вернуть в проверки</button>
+      {% else %}
+        <input type="hidden" name="action" value="ignore" />
+        <button class="btn" type="submit">Исключить из проверок</button>
+      {% endif %}
+    </form>
+  </div>
+{% endblock %}

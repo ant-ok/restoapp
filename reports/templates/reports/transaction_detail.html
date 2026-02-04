@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Чек — restoapp{% endblock %}
+{% block header_title %}Чек{% endblock %}
+
+{% block content %}
+  {% if transaction %}
+    <div class="card">
+      <p><strong>ID:</strong> {{ transaction.transaction_id }}</p>
+      <p><strong>Сумма:</strong> {{ transaction.sum }} (в копейках)</p>
+      <p><strong>Оплачено:</strong> {{ transaction.payed_sum }} (в копейках)</p>
+      <p><strong>Статус:</strong> {{ transaction.status }}</p>
+    </div>
+
+    {% if payments %}
+      <div class="card">
+        <h2 style="margin-top:0;">Оплаты</h2>
+        <table>
+          <tr><th>Наличные</th><th>Карта</th><th>Бонусы</th><th>Третья сторона</th><th>Сертификаты</th><th>Итого</th></tr>
+          <tr>
+            <td>{{ payments.cash }}</td>
+            <td>{{ payments.card }}</td>
+            <td>{{ payments.bonus }}</td>
+            <td>{{ payments.third_party }}</td>
+            <td>{{ payments.cert }}</td>
+            <td>{{ payments.total }}</td>
+          </tr>
+        </table>
+      </div>
+    {% endif %}
+
+    {% if products %}
+      <div class="card">
+        <h2 style="margin-top:0;">Товары</h2>
+        <table>
+          <tr><th>product_id</th><th>modification_id</th><th>Количество</th><th>Цена</th><th>Оплачено</th></tr>
+          {% for p in products %}
+            <tr>
+              <td>{{ p.product_id }}</td>
+              <td>{{ p.modification_id }}</td>
+              <td>{{ p.num }}</td>
+              <td>{{ p.product_price }}</td>
+              <td>{{ p.payed_sum }}</td>
+            </tr>
+          {% endfor %}
+        </table>
+      </div>
+    {% endif %}
+
+    <div class="card">
+      <h2 style="margin-top:0;">Сырые данные</h2>
+      <pre style="background:#f7f7f7;padding:12px;border-radius:8px;overflow:auto;">{{ transaction.raw|safe }}</pre>
+    </div>
+  {% else %}
+    <div class="card">
+      <p>Чек не найден.</p>
+    </div>
+  {% endif %}
+{% endblock %}

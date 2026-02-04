@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% block title %}Отчеты — restoapp{% endblock %}
+{% block header_title %}Отчеты{% endblock %}
+{% block extra_head %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <style>
+    .kpi { display: grid; gap: 6px; padding: 12px; border-radius: 12px; background: #fff7ee; }
+    .kpi strong { font-size: 18px; }
+    .dropzone {
+      min-height: 54px;
+      border: 2px dashed #e5e7eb;
+      border-radius: 12px;
+      padding: 10px;
+      background: #fff;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      color: #6b7280;
+    }
+    .dropzone .badge { cursor: grab; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  {% if message %}
+    <section class="card" style="background:#f3fff3;border:1px solid #cce8cc;">
+      <strong>{{ message }}</strong>
+    </section>
+  {% endif %}
+  {% if error %}
+    <section class="card" style="background:#fff3f3;border:1px solid #e8cccc;">
+      <strong>{{ error }}</strong>
+    </section>
+  {% endif %}
+
+  <section class="card">
+    <h2 style="margin-top:0;">Загрузка данных</h2>
+    <form method="post" style="display:grid;gap:12px;grid-template-columns: repeat(auto-fit, minmax(200px,1fr));align-items:end;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="import" />
+      <div>
+        <label>С</label>
+        <input type="text" id="date-from" name="date_from" required value="{{ today }}" />
+      </div>
+      <div>
+        <label>По</label>
+        <input type="text" id="date-to" name="date_to" required value="{{ today }}" />
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:20px;">
+        <input type="checkbox" name="include_products" />
+        Включить продажи по товарам
+      </label>
+      <button type="submit" class="btn">Загрузить</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2 style="margin-top:0;">Ежедневные отчеты</h2>
+    {% if account %}
+      <div class="muted" style="margin-bottom:8px;">Аккаунт: {{ account.account_base_url }}</div>
+    {% else %}
+      <div class="muted" style="margin-bottom:8px;">Аккаунт не подключен. Перейдите в подключение.</div>
+    {% endif %}
+    <div class="grid-2" style="margin-bottom:14px;">
+      <div class="kpi">
+        <span class="muted">Последняя выручка</span>
+        <strong>{{ latest_report.revenue_eur|floatformat:2|default:"0.00" }} €</strong>
+      </div>
+      <div class="kpi">
+        <span class="muted">Последний средний чек</span>
+        <strong>{{ latest_report.avg_check_eur|floatformat:2|default:"0.00" }} €</strong>
+      </div>
+      <div class="kpi">
+        <span class="muted">Последнее кол-во чеков</span>
+        <strong>{{ latest_report.transactions_count|default:0 }}</strong>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Дата</th>
+          <th>Чеки</th>
+          <th>Выручка</th>
+          <th>Средний чек</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for report in reports %}
+          <tr>
+            <td>{{ report.date }}</td>
+            <td>{{ report.transactions_count }}</td>
+            <td>{{ report.revenue_eur|floatformat:2 }} €</td>
+            <td>{{ report.avg_check_eur|floatformat:2 }} €</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4" class="muted">Нет данных</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2 style="margin-top:0;">Конструктор отчета (как Excel)</h2>
+    <p class="muted">Перетащите поля в строки и в колонки (метрики сверху). Предпросмотр обновляется сразу. Двойной клик по полю удаляет его.</p>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+      <label>Период отчета:</label>
+      <input type="text" id="builder-from" placeholder="С" />
+      <input type="text" id="builder-to" placeholder="По" />
+      <button class="btn secondary" id="builder-apply">Пересобрать</button>
+    </div>
+    <div class="grid-2" style="align-items:start;">
+      <div>
+        <h3 style="margin:0 0 8px;">Поля</h3>
+        <div id="builder-fields" style="display:flex;gap:8px;flex-wrap:wrap;">
+          <span class="badge" draggable="true" data-field="date">Дата</span>
+          <span class="badge" draggable="true" data-field="revenue_eur">Выручка (EUR)</span>
+          <span class="badge" draggable="true" data-field="avg_check_eur">Средний чек (EUR)</span>
+          <span class="badge" draggable="true" data-field="transactions">Количество чеков</span>
+          <span class="badge" draggable="true" data-field="returns">Возвраты (кол-во)</span>
+          <span class="badge" draggable="true" data-field="returns_sum">Возвраты (сумма)</span>
+          <span class="badge" draggable="true" data-field="spot">Точка</span>
+        </div>
+        <div class="muted" style="margin-top:6px;">Поля можно перетаскивать и удалять двойным кликом.</div>
+      </div>
+      <div>
+        <div style="display:grid;gap:10px;">
+          <div>
+            <div class="muted" style="margin-bottom:6px;">Строки</div>
+            <div class="dropzone" id="rows-zone">Перетащите поля</div>
+          </div>
+          <div>
+            <div class="muted" style="margin-bottom:6px;">Колонки</div>
+            <div class="dropzone" id="cols-zone">Перетащите поля</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:14px;">
+      <h3 style="margin:0 0 8px;">Предпросмотр</h3>
+      <table id="builder-preview">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div style="margin-top:14px;">
+      <h3 style="margin:0 0 8px;">Сохранить шаблон</h3>
+      <form method="post" style="display:flex;gap:10px;flex-wrap:wrap;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_template" />
+        <input type="text" name="template_name" placeholder="Название шаблона" style="min-width:220px;" required />
+        <input type="text" name="template_config" id="template-config" placeholder="metrics: ..." style="flex:1;min-width:260px;" />
+        <button class="btn" type="submit">Сохранить</button>
+      </form>
+    </div>
+    <div style="margin-top:14px;">
+      <h3 style="margin:0 0 8px;">Сохраненные шаблоны</h3>
+      <table>
+        <thead>
+          <tr><th>Название</th><th>Конфигурация</th></tr>
+        </thead>
+        <tbody>
+          {% for t in templates %}
+            <tr><td>{{ t.name }}</td><td class="muted">{{ t.config }}</td></tr>
+          {% empty %}
+            <tr><td colspan="2" class="muted">Нет шаблонов</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 style="margin-top:0;">Недавние проблемы</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Дата</th>
+          <th>Тип</th>
+          <th>Сообщение</th>
+          <th>Серьезность</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for issue in issues %}
+          <tr>
+            <td>{{ issue.date }}</td>
+            <td><span class="badge">{{ issue.issue_type }}</span></td>
+            <td><a href="/reports/issues/{{ issue.id }}/">{{ issue.message }}</a></td>
+            <td>{{ issue.severity }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4" class="muted">Нет проблем</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <script type="application/json" id="builder-data">{{ builder_data|safe }}</script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script>
+    flatpickr("#date-from", {dateFormat: "Y-m-d"});
+    flatpickr("#date-to", {dateFormat: "Y-m-d"});
+    flatpickr("#builder-from", {dateFormat: "Y-m-d"});
+    flatpickr("#builder-to", {dateFormat: "Y-m-d"});
+
+    const fields = document.querySelectorAll('#builder-fields .badge');
+    const rowsZone = document.getElementById('rows-zone');
+    const colsZone = document.getElementById('cols-zone');
+    const previewHead = document.querySelector('#builder-preview thead');
+    const previewBody = document.querySelector('#builder-preview tbody');
+    const configInput = document.getElementById('template-config');
+
+    const builderData = JSON.parse(document.getElementById('builder-data')?.textContent || '[]');
+
+    function addToZone(zone, field) {
+      const clone = field.cloneNode(true);
+      clone.addEventListener('dblclick', () => clone.remove());
+      zone.appendChild(clone);
+    }
+
+    fields.forEach((field) => {
+      field.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', field.dataset.field);
+      });
+    });
+
+    [rowsZone, colsZone].forEach((zone) => {
+      zone.addEventListener('dragover', (e) => e.preventDefault());
+      zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const name = e.dataTransfer.getData('text/plain');
+        const field = document.querySelector(`#builder-fields [data-field="${name}"]`);
+        if (field) addToZone(zone, field);
+        renderPreview();
+      });
+    });
+
+    function getZoneFields(zone) {
+      return Array.from(zone.querySelectorAll('.badge')).map(el => el.dataset.field);
+    }
+
+    function renderPreview() {
+      const rows = getZoneFields(rowsZone);
+      const cols = getZoneFields(colsZone);
+      const metrics = cols.length ? cols : ['revenue_eur'];
+
+      configInput.value = `rows:${rows.join(',')};metrics:${metrics.join(',')}`;
+
+      previewHead.innerHTML = '';
+      previewBody.innerHTML = '';
+
+      if (!builderData.length) {
+        previewBody.innerHTML = `<tr><td class="muted">Нет данных</td></tr>`;
+        return;
+      }
+
+      const headRow = document.createElement('tr');
+      rows.forEach(r => {
+        const th = document.createElement('th');
+        th.textContent = r;
+        headRow.appendChild(th);
+      });
+      metrics.forEach(m => {
+        const th = document.createElement('th');
+        th.textContent = m;
+        headRow.appendChild(th);
+      });
+      previewHead.appendChild(headRow);
+
+      builderData.slice(0, 6).forEach(row => {
+        const tr = document.createElement('tr');
+        rows.forEach(r => {
+          const td = document.createElement('td');
+          td.textContent = row[r] ?? '';
+          tr.appendChild(td);
+        });
+        metrics.forEach(m => {
+          const td = document.createElement('td');
+          td.textContent = row[m] ?? '';
+          tr.appendChild(td);
+        });
+        previewBody.appendChild(tr);
+      });
+    }
+
+    document.getElementById('builder-apply').addEventListener('click', (e) => {
+      e.preventDefault();
+      renderPreview();
+    });
+
+    renderPreview();
+  </script>
+{% endblock %}

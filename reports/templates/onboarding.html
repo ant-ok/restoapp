@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Подключение — restoapp{% endblock %}
+{% block header_title %}Подключение кассы{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <h2 style="margin-top:0;">Подключите кассу</h2>
+    <p class="muted">Введите ссылку на аккаунт Poster и API‑ключ. Данные привяжутся к вашему профилю.</p>
+  </div>
+
+  {% if message %}<div class="card" style="background:#ecfdf5;border:1px solid #a7f3d0;">{{ message }}</div>{% endif %}
+  {% if error %}<div class="card" style="background:#fef2f2;border:1px solid #fecaca;">{{ error }}</div>{% endif %}
+
+  <div class="grid-2">
+    <div class="card">
+      <strong>Ваши аккаунты</strong>
+      <div style="display:grid;gap:10px;margin-top:10px;">
+        {% for acc in accounts %}
+          <form method="post" style="display:flex;gap:8px;align-items:center;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="select" />
+            <input type="hidden" name="account_id" value="{{ acc.id }}" />
+            <span style="flex:1;">{{ acc.account_base_url }}</span>
+            {% if acc.is_active %}<span class="muted">(активный)</span>{% endif %}
+            <button class="btn" type="submit">Выбрать</button>
+          </form>
+        {% empty %}
+          <div class="muted">Пока нет подключенных аккаунтов</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <strong>Добавить аккаунт</strong>
+      <form method="post" style="margin-top:10px;display:grid;gap:10px;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add" />
+        <div>
+          <label>URL аккаунта (пример: https://example.joinposter.com/api)</label>
+          <input name="account_base_url" placeholder="https://your-account.joinposter.com/api" required />
+        </div>
+        <div>
+          <label>API ключ (токен Poster)</label>
+          <input name="api_token" type="password" placeholder="Введите токен" required />
+        </div>
+        <div>
+          <label>Тип авторизации</label>
+          <select name="auth_style">
+            <option value="query_token">token (query)</option>
+            <option value="query_access_token">access_token (query)</option>
+            <option value="bearer">Bearer</option>
+          </select>
+        </div>
+        <div class="muted">Токен сохраняется только для вашего профиля.</div>
+        <button class="btn">Сохранить</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}restoapp{% endblock %}
+{% block header_title %}restoapp{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <h2 style="margin-top:0;">Добро пожаловать в restoapp</h2>
+    <p class="muted">Подключите кассу Poster, загрузите данные и получите понятные отчеты по выручке, чекам и проблемам.</p>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <strong>Онбординг в 3 шага</strong>
+      <ol>
+        <li>Зарегистрируйтесь или войдите</li>
+        <li>Подключите кассу (URL + API ключ)</li>
+        <li>Откройте отчеты и загрузите период</li>
+      </ol>
+      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
+        <a class="btn" href="/onboarding/">Подключить кассу</a>
+        <a class="btn secondary" href="/reports/">Открыть отчеты</a>
+      </div>
+    </div>
+    <div class="card">
+      <strong>Возможности</strong>
+      <ul>
+        <li>Отчеты по точкам и метрикам</li>
+        <li>Конструктор отчета как Excel</li>
+        <li>Сомнительные операции и уведомления</li>
+        <li>Telegram‑бот с автосводкой</li>
+      </ul>
+    </div>
+  </div>
+{% endblock %}

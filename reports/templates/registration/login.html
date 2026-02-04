@@ -1,0 +1,21 @@
+{% extends "registration/base_auth.html" %}
+{% block content %}
+  <h1>Вход в систему</h1>
+  <p>Введите логин и пароль, чтобы продолжить.</p>
+  <form method="post">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="error">{{ form.non_field_errors }}</div>
+    {% endif %}
+    <label for="id_username">Логин</label>
+    {{ form.username }}
+    {% if form.username.errors %}<div class="error">{{ form.username.errors }}</div>{% endif %}
+    <label for="id_password">Пароль</label>
+    {{ form.password }}
+    {% if form.password.errors %}<div class="error">{{ form.password.errors }}</div>{% endif %}
+    <button class="btn" type="submit">Войти</button>
+  </form>
+  <div class="links">
+    Нет аккаунта? <a href="/register/">Регистрация</a>
+  </div>
+{% endblock %}

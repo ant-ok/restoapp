@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Telegram — restoapp{% endblock %}
+{% block header_title %}Telegram настройки{% endblock %}
+
+{% block content %}
+  {% if message %}
+    <div class="card" style="background:#ecfdf5;border:1px solid #a7f3d0;">{{ message }}</div>
+  {% endif %}
+
+  <form method="post" class="card" style="display:grid;gap:14px;">
+    {% csrf_token %}
+    <div>
+      <label>Chat ID (через запятую)</label>
+      <input name="chat_ids" value="{{ settings.chat_ids|default:'' }}" />
+      <div class="muted" style="margin-top:6px;">Отправьте боту /start — он покажет ваш chat_id.</div>
+    </div>
+
+    <div class="grid-2">
+      <label style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" name="auto_daily" {% if settings and settings.auto_daily %}checked{% endif %} />
+        Авто‑отчёт каждый день
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" name="auto_shift_close" {% if settings and settings.auto_shift_close %}checked{% endif %} />
+        Авто‑отчёт при закрытии смены
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" name="auto_per_spot" {% if settings and settings.auto_per_spot %}checked{% endif %} />
+        Отдельный отчёт по каждой точке
+      </label>
+      <div>
+        <label>Время отправки (HH:MM)</label>
+        <input name="daily_time" value="{{ settings.daily_time|default:'23:59' }}" />
+      </div>
+      <div>
+        <label>Часовой пояс</label>
+        <input name="timezone" value="{{ settings.timezone|default:'UTC' }}" />
+      </div>
+      <div>
+        <label>Шаблон отчета</label>
+        <select name="template_name">
+          <option value="">Без шаблона</option>
+          {% for t in templates %}
+            <option value="{{ t.name }}" {% if settings and settings.template_name == t.name %}selected{% endif %}>{{ t.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Шаблон для закрытия смены</label>
+        <select name="shift_template_name">
+          <option value="">Без шаблона</option>
+          {% for t in templates %}
+            <option value="{{ t.name }}" {% if settings and settings.shift_template_name == t.name %}selected{% endif %}>{{ t.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div>
+      <label>Что выводить в отчете</label>
+      <div class="grid-2">
+        <label><input type="checkbox" name="metrics" value="revenue" {% if settings and 'revenue' in settings.metrics %}checked{% endif %} /> Выручка</label>
+        <label><input type="checkbox" name="metrics" value="transactions" {% if settings and 'transactions' in settings.metrics %}checked{% endif %} /> Чеки</label>
+        <label><input type="checkbox" name="metrics" value="avg_check" {% if settings and 'avg_check' in settings.metrics %}checked{% endif %} /> Средний чек</label>
+        <label><input type="checkbox" name="metrics" value="issues" {% if settings and 'issues' in settings.metrics %}checked{% endif %} /> Проблемы</label>
+      </div>
+    </div>
+
+    <div>
+      <label>Детализация</label>
+      <div class="grid-2">
+        <label><input type="checkbox" name="include_spots" {% if settings and settings.include_spots %}checked{% endif %} /> Включить точки</label>
+        <label><input type="checkbox" name="include_returns" {% if settings and settings.include_returns %}checked{% endif %} /> Включить возвраты</label>
+        <label><input type="checkbox" name="include_issues" {% if settings and settings.include_issues %}checked{% endif %} /> Включить список проблем</label>
+      </div>
+    </div>
+
+    <div>
+      <label>Точки для отчетов (если не выбрать — все)</label>
+      <div class="grid-2">
+        {% for spot in spots %}
+          <label>
+            <input type="checkbox" name="spot_ids" value="{{ spot.spot_id }}" {% if settings and spot.spot_id|stringformat:"s" in settings.spot_ids %}checked{% endif %} />
+            {{ spot.name }}
+          </label>
+        {% empty %}
+          <div class="muted">Нет справочника точек. Импортируйте данные, чтобы появились точки.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div>
+      <label>Сразу сообщать о проблемах</label>
+      <div class="grid-2">
+        {% for key,label in issue_types %}
+          <label><input type="checkbox" name="notify_issue_types" value="{{ key }}" {% if settings and key in settings.notify_issue_types %}checked{% endif %} /> {{ label }}</label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <button class="btn" type="submit">Сохранить</button>
+  </form>
+{% endblock %}

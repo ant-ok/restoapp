@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="et">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Tellimuse ekraan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;700&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #121826;
+      --muted: #5e677a;
+      --paper: #f4f1ec;
+      --card: #ffffff;
+      --accent: #e85d25;
+      --accent-2: #1e9aa8;
+      --shadow: 0 20px 45px rgba(18, 24, 38, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Manrope", system-ui, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(900px 500px at 10% -10%, #ffe7d5 0%, transparent 60%),
+        radial-gradient(800px 480px at 90% -5%, #d7f4f7 0%, transparent 55%),
+        var(--paper);
+      min-height: 100vh;
+    }
+    header {
+      padding: 24px 32px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .title {
+      font-family: "Fraunces", serif;
+      font-size: clamp(22px, 3.2vw, 34px);
+      margin: 0;
+      letter-spacing: 0.2px;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 14px;
+    }
+    main {
+      padding: 0 32px 28px;
+      display: grid;
+      gap: 18px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(18, 24, 38, 0.06);
+    }
+    .order-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .order-label {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--muted);
+    }
+    .order-number {
+      font-size: clamp(26px, 4vw, 44px);
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .items {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .items th {
+      text-align: left;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 600;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(18, 24, 38, 0.08);
+    }
+    .items td {
+      padding: 12px 0;
+      border-bottom: 1px dashed rgba(18, 24, 38, 0.08);
+      font-size: clamp(15px, 2.4vw, 18px);
+    }
+    .items td:last-child,
+    .items th:last-child {
+      text-align: right;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(30, 154, 168, 0.12);
+      color: var(--accent-2);
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .total {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 20px;
+      border-radius: 18px;
+      background: linear-gradient(120deg, rgba(232, 93, 37, 0.08), rgba(30, 154, 168, 0.08));
+    }
+    .total-label {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .total-value {
+      font-size: clamp(28px, 4.4vw, 48px);
+      font-weight: 700;
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: right;
+    }
+    @media (max-width: 720px) {
+      header { padding: 20px 20px 8px; }
+      main { padding: 0 20px 20px; }
+      .order-row { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 class="title">Tellimuse ekraan</h1>
+    <div class="meta" id="updatedAt">Uuendatud: —</div>
+  </header>
+
+  <main>
+    <section class="card order-row">
+      <div>
+        <div class="order-label">Tellimuse number</div>
+        <div class="order-number" id="orderNumber">—</div>
+      </div>
+      <div class="pill" id="modePill" hidden>Demo</div>
+    </section>
+
+    <section class="card">
+      <table class="items">
+        <thead>
+          <tr>
+            <th>Positsioon</th>
+            <th>Kogus</th>
+            <th>Hind</th>
+            <th>Summa</th>
+          </tr>
+        </thead>
+        <tbody id="itemsBody">
+          <tr>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="total card">
+      <div class="total-label">Kokku tasumiseks</div>
+      <div class="total-value" id="totalValue">—</div>
+    </section>
+    <div class="hint" id="statusHint">Ootame andmeid...</div>
+  </main>
+
+  <script>
+    const pollSeconds = Number("{{ poll_seconds }}") || 5;
+    const currencySymbol = "{{ currency_symbol }}" || "€";
+
+    const orderNumberEl = document.getElementById("orderNumber");
+    const itemsBodyEl = document.getElementById("itemsBody");
+    const totalValueEl = document.getElementById("totalValue");
+    const updatedAtEl = document.getElementById("updatedAt");
+    const statusHintEl = document.getElementById("statusHint");
+    const modePillEl = document.getElementById("modePill");
+
+    const fmt = new Intl.NumberFormat("et-EE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    function formatMoney(value) {
+      if (value === null || value === undefined || Number.isNaN(value)) {
+        return "—";
+      }
+      return `${fmt.format(value)} ${currencySymbol}`;
+    }
+
+    function formatQty(value) {
+      if (value === null || value === undefined || Number.isNaN(value)) {
+        return "—";
+      }
+      if (Number.isInteger(value)) {
+        return value.toString();
+      }
+      return fmt.format(value);
+    }
+
+    function renderItems(items) {
+      itemsBodyEl.innerHTML = "";
+      if (!items || items.length === 0) {
+        itemsBodyEl.innerHTML = "<tr><td colspan=\"4\">Pole positsioone</td></tr>";
+        return;
+      }
+      items.forEach((item) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${item.name || "—"}</td>
+          <td>${formatQty(item.qty)}</td>
+          <td>${formatMoney(item.price)}</td>
+          <td>${formatMoney(item.sum)}</td>
+        `;
+        itemsBodyEl.appendChild(row);
+      });
+    }
+
+    async function fetchData() {
+      const params = new URLSearchParams(window.location.search);
+      const dataUrl = new URL("/client-screen/data/", window.location.origin);
+      if (params.get("order_id")) {
+        dataUrl.searchParams.set("order_id", params.get("order_id"));
+      }
+
+      try {
+        const response = await fetch(dataUrl.toString(), { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Server error");
+        }
+
+        orderNumberEl.textContent = payload.order_number || "—";
+        renderItems(payload.items || []);
+        totalValueEl.textContent = formatMoney(payload.total);
+        modePillEl.hidden = !payload.demo;
+        const ts = payload.updated_at ? new Date(payload.updated_at) : new Date();
+        updatedAtEl.textContent = `Uuendatud: ${ts.toLocaleTimeString("et-EE")}`;
+        statusHintEl.textContent = "";
+      } catch (err) {
+        statusHintEl.textContent = `Viga andmete laadimisel: ${err.message}`;
+      }
+    }
+
+    fetchData();
+    setInterval(fetchData, pollSeconds * 1000);
+  </script>
+</body>
+</html>
