@@ -174,3 +174,13 @@ class TelegramSettings(models.Model):
 
     def __str__(self) -> str:
         return f"TelegramSettings({self.user.username})"
+
+
+class PendingTelegramChat(models.Model):
+    chat_id = models.BigIntegerField(unique=True)
+    title = models.CharField(max_length=255, blank=True, default="")
+    chat_type = models.CharField(max_length=32, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"{self.chat_id} ({self.chat_type})"

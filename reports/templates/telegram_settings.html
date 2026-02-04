@@ -10,6 +10,7 @@
 
   <form method="post" class="card" style="display:grid;gap:14px;">
     {% csrf_token %}
+    <input type="hidden" name="action" value="save" />
     <div>
       <label>Chat ID (через запятую)</label>
       <input name="chat_ids" value="{{ settings.chat_ids|default:'' }}" />
@@ -101,4 +102,22 @@
 
     <button class="btn" type="submit">Сохранить</button>
   </form>
+
+  <div class="card" style="margin-top:16px;">
+    <h3 style="margin-top:0;">Новые чаты</h3>
+    {% for chat in pending_chats %}
+      <form method="post" style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="claim_chat" />
+        <input type="hidden" name="chat_id" value="{{ chat.chat_id }}" />
+        <div style="flex:1;">
+          <strong>{{ chat.title|default:"Без названия" }}</strong>
+          <div class="muted">ID: {{ chat.chat_id }} · {{ chat.chat_type }}</div>
+        </div>
+        <button class="btn" type="submit">Подключить чат</button>
+      </form>
+    {% empty %}
+      <div class="muted">Нет новых чатов. Добавьте бота и напишите /start.</div>
+    {% endfor %}
+  </div>
 {% endblock %}

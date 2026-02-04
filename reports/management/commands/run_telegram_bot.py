@@ -157,12 +157,20 @@ class Command(BaseCommand):
     help = "Run Telegram bot for daily reports"
 
     def handle(self, *args, **options):
+        if os.getenv("TELEGRAM_WEBHOOK_SECRET"):
+            raise CommandError("Webhook mode enabled. Do not run polling bot.")
         token = _get_env("TELEGRAM_BOT_TOKEN")
 
         async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             date, spot_query, overrides = _parse_report_args(context.args or [])
             if date is None:
                 date = timezone.localdate()
+            settings = await _get_settings_by_chat(update.effective_chat.id)
+            if not settings:
+                await update.message.reply_text(
+                    "Для этого чата нет настроек. Зайдите в /telegram/ и добавьте chat_id."
+                )
+                return
             if spot_query:
                 spot = await _find_spot(spot_query)
                 if not spot:
@@ -214,6 +222,12 @@ class Command(BaseCommand):
                 await update.message.reply_text("Открыть детали:", reply_markup=InlineKeyboardMarkup(buttons))
 
         async def cmd_spots(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            settings = await _get_settings_by_chat(update.effective_chat.id)
+            if not settings:
+                await update.message.reply_text(
+                    "Для этого чата нет настроек. Зайдите в /telegram/ и добавьте chat_id."
+                )
+                return
             spots = await _get_spots()
             if not spots:
                 await update.message.reply_text("Нет справочника точек. Добавьте в админке.")
@@ -224,6 +238,12 @@ class Command(BaseCommand):
             await update.message.reply_text("\n".join(lines))
 
         async def cmd_spot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            settings = await _get_settings_by_chat(update.effective_chat.id)
+            if not settings:
+                await update.message.reply_text(
+                    "Для этого чата нет настроек. Зайдите в /telegram/ и добавьте chat_id."
+                )
+                return
             if not context.args:
                 await update.message.reply_text("Использование: /spot <id> или /spot <name>")
                 return
@@ -255,6 +275,12 @@ class Command(BaseCommand):
             )
 
         async def cmd_issues(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            settings = await _get_settings_by_chat(update.effective_chat.id)
+            if not settings:
+                await update.message.reply_text(
+                    "Для этого чата нет настроек. Зайдите в /telegram/ и добавьте chat_id."
+                )
+                return
             date = timezone.localdate()
             if context.args:
                 try:

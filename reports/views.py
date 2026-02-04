@@ -18,7 +18,18 @@ from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods
 from django.utils import timezone
 
-from reports.models import DataIssue, DailyReport, PosterAccount, ReportTemplate, UserPosterAccount, Insight, Transaction, TelegramSettings, Spot
+from reports.models import (
+    DataIssue,
+    DailyReport,
+    PosterAccount,
+    ReportTemplate,
+    UserPosterAccount,
+    Insight,
+    Transaction,
+    TelegramSettings,
+    Spot,
+    PendingTelegramChat,
+)
 from reports.poster_client import PosterClient, PosterConfigError
 from reports.services import (
     import_daily,
@@ -119,27 +130,41 @@ def telegram_settings(request: HttpRequest) -> HttpResponse:
         auto_per_spot = request.POST.get("auto_per_spot") == "on"
         shift_template_name = (request.POST.get("shift_template_name") or "").strip()
 
-        if not settings:
-            settings = TelegramSettings(user=request.user)
-        settings.chat_ids = chat_ids
-        settings.auto_daily = auto_daily
-        settings.daily_time = daily_time
-        settings.timezone = timezone_name
-        settings.template_name = template_name
-        settings.include_spots = include_spots
-        settings.include_issues = include_issues
-        settings.include_returns = include_returns
-        settings.metrics = metrics
-        settings.spot_ids = spot_ids
-        settings.notify_issue_types = notify_issue_types
-        settings.auto_shift_close = auto_shift_close
-        settings.auto_per_spot = auto_per_spot
-        settings.shift_template_name = shift_template_name
-        settings.save()
-        message = "Настройки Telegram сохранены."
+        if request.POST.get("action") == "claim_chat":
+            chat_id = (request.POST.get("chat_id") or "").strip()
+            if chat_id:
+                if not settings:
+                    settings = TelegramSettings(user=request.user)
+                current = [c.strip() for c in (settings.chat_ids or "").split(",") if c.strip()]
+                if chat_id not in current:
+                    current.append(chat_id)
+                settings.chat_ids = ",".join(current)
+                settings.save()
+                PendingTelegramChat.objects.filter(chat_id=chat_id).delete()
+                message = "Чат подключен."
+        elif request.POST.get("action") == "save":
+            if not settings:
+                settings = TelegramSettings(user=request.user)
+            settings.chat_ids = chat_ids
+            settings.auto_daily = auto_daily
+            settings.daily_time = daily_time
+            settings.timezone = timezone_name
+            settings.template_name = template_name
+            settings.include_spots = include_spots
+            settings.include_issues = include_issues
+            settings.include_returns = include_returns
+            settings.metrics = metrics
+            settings.spot_ids = spot_ids
+            settings.notify_issue_types = notify_issue_types
+            settings.auto_shift_close = auto_shift_close
+            settings.auto_per_spot = auto_per_spot
+            settings.shift_template_name = shift_template_name
+            settings.save()
+            message = "Настройки Telegram сохранены."
 
     templates = ReportTemplate.objects.order_by("name")
     spots = Spot.objects.order_by("spot_id")
+    pending_chats = PendingTelegramChat.objects.order_by("-created_at")[:20]
     issue_types = [
         ("payment_mismatch", "Несоответствие оплат"),
         ("zero_or_negative_sum", "Нулевая/отрицательная сумма"),
@@ -155,6 +180,7 @@ def telegram_settings(request: HttpRequest) -> HttpResponse:
             "message": message,
             "issue_types": issue_types,
             "spots": spots,
+            "pending_chats": pending_chats,
         },
     )
 
@@ -776,3 +802,274 @@ def poster_webhook(request: HttpRequest) -> HttpResponse:
 
     _client_screen_cache_set(response)
     return JsonResponse({"status": "accept"})
+
+
+def _telegram_send(chat_id: int, text: str, reply_markup: Optional[dict] = None) -> None:
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token:
+        return
+    payload = {"chat_id": chat_id, "text": text}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    try:
+        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
+    except Exception:
+        pass
+
+
+def _parse_telegram_args(args: List[str]) -> tuple[Optional[dt.date], Optional[str], Dict[str, Any]]:
+    date = None
+    spot_query = None
+    overrides: Dict[str, Any] = {}
+    for token in args:
+        if token.count("-") == 2 and len(token) >= 8:
+            try:
+                date = dt.date.fromisoformat(token)
+                continue
+            except ValueError:
+                pass
+        if token.startswith("spot="):
+            spot_query = token.split("=", 1)[1].strip()
+            continue
+        if token.startswith("metrics="):
+            overrides["metrics"] = [m.strip() for m in token.split("=", 1)[1].split(",") if m.strip()]
+            continue
+        if token.startswith("issues="):
+            overrides["include_issues"] = token.split("=", 1)[1].strip() not in {"0", "false", "no"}
+            continue
+        if token.startswith("spots="):
+            overrides["include_spots"] = token.split("=", 1)[1].strip() not in {"0", "false", "no"}
+            continue
+        if token.startswith("returns="):
+            overrides["include_returns"] = token.split("=", 1)[1].strip() not in {"0", "false", "no"}
+            continue
+        if token.startswith("template="):
+            overrides["template_name"] = token.split("=", 1)[1].strip()
+            continue
+        if token.startswith("per_spot="):
+            overrides["per_spot"] = token.split("=", 1)[1].strip() not in {"0", "false", "no"}
+            continue
+        if not spot_query:
+            spot_query = token
+    return date, spot_query, overrides
+
+
+def telegram_webhook(request: HttpRequest, secret: str) -> HttpResponse:
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    webhook_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+    if not token or not webhook_secret or secret != webhook_secret:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    message = payload.get("message") or payload.get("edited_message")
+    callback = payload.get("callback_query")
+
+    if callback:
+        data = callback.get("data") or ""
+        chat_id = callback.get("message", {}).get("chat", {}).get("id")
+        if not chat_id:
+            return JsonResponse({"status": "ok"})
+        settings = TelegramSettings.objects.filter(chat_ids__icontains=str(chat_id)).first()
+        if not settings:
+            _telegram_send(chat_id, "Для этого чата нет настроек. Зайдите в /telegram/ и добавьте chat_id.")
+            return JsonResponse({"status": "ok"})
+        if data.startswith("report|"):
+            raw = data.split("|", 1)[1]
+            date, spot_query, overrides = _parse_telegram_args([p for p in raw.split(";") if p])
+            if date is None:
+                date = timezone.localdate()
+            if overrides.get("per_spot"):
+                summary = daily_summary_by_spot(date)
+                if settings.spot_ids:
+                    allowed = {str(s) for s in settings.spot_ids}
+                    summary = {k: v for k, v in summary.items() if str(k) in allowed}
+                for spot_id, item in summary.items():
+                    if item["revenue"] <= 0 and item["transactions"] <= 0:
+                        continue
+                    name = get_spot_name(spot_id)
+                    lines = [
+                        f"{name} за {date.isoformat()}",
+                        f"Выручка: {item['revenue']/100:.2f} €",
+                        f"Чеков: {item['transactions']}",
+                    ]
+                    if settings.include_returns:
+                        lines.append(f"Возвратов: {item['returns']}")
+                    _telegram_send(chat_id, "\n".join(lines))
+            else:
+                text = build_report_text(
+                    date,
+                    metrics=overrides.get("metrics") or (settings.metrics or None),
+                    include_spots=overrides.get("include_spots", settings.include_spots),
+                    include_issues=overrides.get("include_issues", settings.include_issues),
+                    include_returns=overrides.get("include_returns", settings.include_returns),
+                    spot_ids=settings.spot_ids or None,
+                )
+                _telegram_send(chat_id, text)
+        return JsonResponse({"status": "ok"})
+
+    if not message:
+        return JsonResponse({"status": "ok"})
+
+    chat_id = message.get("chat", {}).get("id")
+    if not chat_id:
+        return JsonResponse({"status": "ok"})
+
+    text = (message.get("text") or "").strip()
+    settings = TelegramSettings.objects.filter(chat_ids__icontains=str(chat_id)).first()
+    if not settings and text not in {"/start", "/help"}:
+        _telegram_send(chat_id, "Для этого чата нет настроек. Зайдите в /telegram/ и добавьте chat_id.")
+        return JsonResponse({"status": "ok"})
+
+    if text.startswith("/start"):
+        if not settings:
+            PendingTelegramChat.objects.update_or_create(
+                chat_id=chat_id,
+                defaults={
+                    "title": message.get("chat", {}).get("title") or message.get("chat", {}).get("username") or "",
+                    "chat_type": message.get("chat", {}).get("type") or "",
+                },
+            )
+        _telegram_send(
+            chat_id,
+            f"Ваш chat_id: {chat_id}\nЭтот чат сохранён. Откройте /telegram/ и нажмите «Подключить чат».\nКоманды:\n/report — отчет\n/issues — проблемы\n/spots — точки\n/spot <id|name>\n/settings — настройки",
+        )
+        return JsonResponse({"status": "ok"})
+
+    if text.startswith("/settings"):
+        if not settings:
+            _telegram_send(chat_id, "Настройки не найдены. Зайдите в /telegram/ и сохраните настройки.")
+            return JsonResponse({"status": "ok"})
+        lines = [
+            "Настройки Telegram:",
+            f"Авто‑отчет: {'да' if settings.auto_daily else 'нет'}",
+            f"Отдельно по точкам: {'да' if settings.auto_per_spot else 'нет'}",
+            f"Авто при закрытии смены: {'да' if settings.auto_shift_close else 'нет'}",
+            f"Время: {settings.daily_time} ({settings.timezone})",
+            f"Метрики: {', '.join(settings.metrics or []) or 'по умолчанию'}",
+            f"Точки: {', '.join(settings.spot_ids or []) or 'все'}",
+        ]
+        _telegram_send(chat_id, "\n".join(lines))
+        return JsonResponse({"status": "ok"})
+
+    if text.startswith("/spots"):
+        spots = Spot.objects.order_by("spot_id")
+        if not spots:
+            _telegram_send(chat_id, "Нет справочника точек. Импортируйте данные.")
+            return JsonResponse({"status": "ok"})
+        lines = ["Точки:"] + [f"• {s.spot_id}: {s.name}" for s in spots]
+        _telegram_send(chat_id, "\n".join(lines))
+        return JsonResponse({"status": "ok"})
+
+    if text.startswith("/spot"):
+        parts = text.split()
+        if len(parts) < 2:
+            _telegram_send(chat_id, "Использование: /spot <id|name> [YYYY-MM-DD]")
+            return JsonResponse({"status": "ok"})
+        date = timezone.localdate()
+        query = " ".join(parts[1:])
+        if parts[-1].count("-") == 2:
+            try:
+                date = dt.date.fromisoformat(parts[-1])
+                query = " ".join(parts[1:-1])
+            except ValueError:
+                pass
+        spot = Spot.objects.filter(spot_id=query).first() or Spot.objects.filter(name__icontains=query).first()
+        if not spot:
+            _telegram_send(chat_id, "Точка не найдена.")
+            return JsonResponse({"status": "ok"})
+        summary = daily_summary_by_spot(date)
+        item = summary.get(spot.spot_id)
+        if not item:
+            _telegram_send(chat_id, f"За {date.isoformat()} по точке {spot.name} данных нет.")
+            return JsonResponse({"status": "ok"})
+        lines = [
+            f"{spot.name} за {date.isoformat()}",
+            f"Выручка: {item['revenue']/100:.2f} €",
+            f"Чеков: {item['transactions']}",
+            f"Возвратов: {item['returns']}",
+        ]
+        _telegram_send(chat_id, "\n".join(lines))
+        return JsonResponse({"status": "ok"})
+
+    if text.startswith("/issues"):
+        parts = text.split()
+        date = timezone.localdate()
+        if len(parts) >= 2:
+            try:
+                date = dt.date.fromisoformat(parts[1])
+            except ValueError:
+                pass
+        issues = DataIssue.objects.filter(date=date, ignored=False)
+        if not issues:
+            _telegram_send(chat_id, f"Проблем за {date.isoformat()} нет.")
+            return JsonResponse({"status": "ok"})
+        lines = [f"Проблемы за {date.isoformat()}:"] + [f"• {i.message}" for i in issues[:10]]
+        if issues.count() > 10:
+            lines.append(f"… и еще {issues.count() - 10}")
+        _telegram_send(chat_id, "\n".join(lines))
+        base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+        if base_url:
+            buttons = []
+            for issue in issues[:5]:
+                tx_id = (issue.context or {}).get("transaction_id")
+                row = [{"text": "Проблема", "url": f"{base_url}/reports/issues/{issue.id}/"}]
+                if tx_id:
+                    row.append({"text": "Чек", "url": f"{base_url}/reports/transactions/{tx_id}/"})
+                buttons.append(row)
+            _telegram_send(chat_id, "Открыть детали:", {"inline_keyboard": buttons})
+        return JsonResponse({"status": "ok"})
+
+    if text.startswith("/report"):
+        args = text.split()[1:]
+        date, spot_query, overrides = _parse_telegram_args(args)
+        if date is None:
+            date = timezone.localdate()
+        if spot_query:
+            spot = Spot.objects.filter(spot_id=spot_query).first() or Spot.objects.filter(name__icontains=spot_query).first()
+            if not spot:
+                _telegram_send(chat_id, "Точка не найдена.")
+                return JsonResponse({"status": "ok"})
+            summary = daily_summary_by_spot(date)
+            item = summary.get(spot.spot_id)
+            if not item:
+                _telegram_send(chat_id, f"За {date.isoformat()} по точке {spot.name} данных нет.")
+                return JsonResponse({"status": "ok"})
+            lines = [
+                f"{spot.name} за {date.isoformat()}",
+                f"Выручка: {item['revenue']/100:.2f} €",
+                f"Чеков: {item['transactions']}",
+            ]
+            if overrides.get("include_returns", True):
+                lines.append(f"Возвратов: {item['returns']}")
+            _telegram_send(chat_id, "\n".join(lines))
+        else:
+            text = build_report_text(
+                date,
+                metrics=overrides.get("metrics") or (settings.metrics or None),
+                include_spots=overrides.get("include_spots", settings.include_spots),
+                include_issues=overrides.get("include_issues", settings.include_issues),
+                include_returns=overrides.get("include_returns", settings.include_returns),
+                spot_ids=settings.spot_ids or None,
+            )
+            keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "Выручка+чеки", "callback_data": "report|metrics=revenue,transactions"},
+                        {"text": "Только выручка", "callback_data": "report|metrics=revenue"},
+                    ],
+                    [
+                        {"text": "Без проблем", "callback_data": "report|issues=0"},
+                        {"text": "Без возвратов", "callback_data": "report|returns=0"},
+                    ],
+                    [
+                        {"text": "По точкам", "callback_data": "report|per_spot=1"},
+                    ],
+                ]
+            }
+            _telegram_send(chat_id, text, keyboard)
+        return JsonResponse({"status": "ok"})
+
+    return JsonResponse({"status": "ok"})
